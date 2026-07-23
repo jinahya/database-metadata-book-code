@@ -20,27 +20,25 @@ package io.github.jinahya.database.metadata.book;
  * #L%
  */
 
+import com.github.jinahya.database.metadata.bind.Context;
+import com.github.jinahya.database.metadata.bind.PrimaryKey;
 import com.github.jinahya.database.metadata.bind.Table;
 import io.vavr.CheckedConsumer;
 import io.vavr.CheckedFunction1;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
-import java.sql.DatabaseMetaData;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
-import java.util.Collection;
-import java.util.Optional;
-
-import static java.util.Objects.requireNonNull;
+import java.util.Comparator;
+import java.util.List;
 
 /**
- * An abstract test class for in-memory databases.
+ * An abstract test class exercising the {@code database-metadata-bind} library ({@link Context}) rather than the raw
+ * {@link java.sql.DatabaseMetaData} API. Each concrete subclass targets one in-memory engine.
  *
  * @author Jin Kwon &lt;onacit at gmail.com&gt;
  */
@@ -49,467 +47,214 @@ import static java.util.Objects.requireNonNull;
 abstract class _Metadata_Binding_Test {
 
     /**
-     * Returns a connection
+     * Returns a connection.
      *
      * @return a connection.
      * @throws SQLException if a database error occurs.
      */
     abstract Connection connect() throws SQLException;
 
-    // -----------------------------------------------------------------------------------------------------------------
-    <R> R applyConnection(final CheckedFunction1<? super Connection, ? extends R> function) throws Throwable {
-        return __JavaSqlTestUtils.applyConnection(this::connect, function);
-    }
+    // ----------------------------------------------------------------------------------------------------- fixture
+    /**
+     * The same standard-SQL fixture used by {@link _Metadata_Raw_Test}: a parent with a two-column primary key
+     * {@code (B_COL, A_COL)}, a child with a composite foreign key back to it, and an index on the child's foreign-key
+     * columns.
+     */
+    private static final List<String> FIXTURE_DDL = List.of(
+            """
+            create table demo_parent (
+                a_col integer not null,
+                b_col integer not null,
+                constraint pk_demo_pk primary key (b_col, a_col)
+            )""",
+            """
+            create table demo_child (
+                id integer not null primary key,
+                parent_a integer,
+                parent_b integer,
+                constraint fk_demo_child foreign key (parent_b, parent_a)
+                        references demo_parent (b_col, a_col)
+            )""",
+            "create index ix_demo_child on demo_child (parent_b, parent_a)");
 
-    <R> R applyMetadata(final CheckedFunction1<? super DatabaseMetaData, ? extends R> function) throws Throwable {
-        try {
-            return __JavaSqlTestUtils.applyDatabaseMetaData(this::connect, function);
-        } catch (final SQLFeatureNotSupportedException e) {
-            log.error(e.getMessage(), e);
-            return null;
+    private void createFixture(final Connection connection) throws SQLException {
+        try (var statement = connection.createStatement()) {
+            for (final var ddl : FIXTURE_DDL) {
+                try {
+                    statement.execute(ddl);
+                } catch (final SQLException sqle) {
+                    log.debug("fixture DDL skipped ({}): {}", sqle.getMessage(), ddl.lines().findFirst().orElse(""));
+                }
+            }
         }
     }
-
-    void acceptMetadata(final CheckedConsumer<? super DatabaseMetaData> consumer) throws Throwable {
-        applyMetadata(m -> {
-            consumer.accept(m);
-            return null;
-        });
-    }
-
-//    <R> R applyContext(final CheckedFunction1<? super Context, ? extends R> function) throws Throwable {
-//        return applyConnection(c -> function.apply(Context.from(c)));
-//    }
 
     // -----------------------------------------------------------------------------------------------------------------
 
     /**
-     * Applies the specified function to a newly opened {@link DatabaseMetaData} and logs column metadata for the result
-     * set it returns. Methods unsupported by the driver, or failing with an {@link SQLException}, are logged rather
-     * than failing the test.
+     * Opens a connection, creates the fixture, wraps the connection in a {@link Context}, and applies the specified
+     * function.
      *
-     * @param function a function returning the result set to log.
-     * @throws Throwable if opening a connection fails.
+     * @param function the function to apply to the context.
+     * @param <R>      the result type.
+     * @return the result of the function.
+     * @throws Throwable if an error occurs.
      */
-    private void bind(final CheckedFunction1<? super DatabaseMetaData, ? extends ResultSet> function) throws Throwable {
-        requireNonNull(function, "function is null");
-        applyMetadata(md -> {
-            try (var results = function.apply(md)) {
-                if (results != null) {
-                    __ResultSetMetaDataColumnTestUtils.log(results);
-                }
+    <R> R applyContext(final CheckedFunction1<? super Context, ? extends R> function) throws Throwable {
+        try (var connection = connect()) {
+            createFixture(connection);
+            return function.apply(Context.newInstance(connection));
+        }
+    }
+
+    /**
+     * Applies the specified consumer to a {@link Context}, logging (rather than failing on) methods the driver does not
+     * support.
+     *
+     * @param consumer the consumer to accept the context.
+     * @throws Throwable if an error occurs.
+     */
+    void acceptContext(final CheckedConsumer<? super Context> consumer) throws Throwable {
+        applyContext(context -> {
+            try {
+                consumer.accept(context);
             } catch (final SQLFeatureNotSupportedException sqlfnse) {
                 log.debug("unsupported by the driver; {}", sqlfnse.getMessage());
-            } catch (final SQLException sqle) {
-                log.error("failed to apply function", sqle);
             }
             return null;
         });
     }
 
-    // ------------------------------------------------------------------------------------------- (scalar) terms/values
-    @Test
-    void getSQLKeywords__() throws Throwable {
-        acceptMetadata(m -> {
-            final var result = m.getSQLKeywords();
-            log.debug("sql keywords: {}", result);
-        });
+    /**
+     * Finds the fixture table by name, honoring per-engine identifier case-folding.
+     *
+     * @param context the context.
+     * @param name    the (unquoted) table name to match, ignoring case.
+     * @return the matching {@link Table}, or {@code null}.
+     * @throws SQLException if a database error occurs.
+     */
+    private Table findTable(final Context context, final String name) throws SQLException {
+        return context.getTables(null, null, "%", new String[] {"TABLE"}).stream()
+                .filter(t -> name.equalsIgnoreCase(t.getTableName()))
+                .findFirst()
+                .orElse(null);
     }
 
-    @Test
-    void getCatalogTerm__() throws Throwable {
-        applyMetadata(m -> {
-            try {
-                final var result = m.getCatalogTerm();
-                log.info("catalogTerm: {}", result);
-            } catch (final SQLException sqle) {
-                log.error("failed to get catalogTerm", sqle);
-            }
-            return null;
-        });
-    }
-
-    @Test
-    void getSchemaTerm__() throws Throwable {
-        applyMetadata(m -> {
-            try {
-                final var result = m.getSchemaTerm();
-                log.info("schemaTerm: {}", result);
-            } catch (final SQLException sqle) {
-                log.error("failed to get schemaTerm", sqle);
-            }
-            return null;
-        });
-    }
-
-    @Test
-    void getProcedureTerm__() throws Throwable {
-        applyMetadata(m -> {
-            try {
-                final var result = m.getProcedureTerm();
-                log.info("procedureTerm: {}", result);
-            } catch (final SQLException sqle) {
-                log.error("failed to get procedureTerm", sqle);
-            }
-            return null;
-        });
-    }
-
-    // ----------------------------------------------------------------------------------------------------- getCatalogs
+    // --------------------------------------------------------------------------------------------------- namespace
     @Test
     void getCatalogs__() throws Throwable {
-        applyMetadata(m -> {
-            try {
-                final var results = m.getCatalogs();
-                __ResultSetMetaDataColumnTestUtils.log(results);
-            } catch (final SQLFeatureNotSupportedException sqlfnse) {
-                log.debug("getCatalogs(), unsupported by the driver; {}", sqlfnse.getMessage());
-            }
-            return null;
+        acceptContext(context -> {
+            final var catalogs = context.getCatalogs();
+            catalogs.forEach(c -> log.info("catalog: {}", c.getTableCat()));
         });
     }
 
-    // ------------------------------------------------------------------------------------------------------ getSchemas
     @Test
     void getSchemas__() throws Throwable {
-        applyMetadata(m -> {
-            try {
-                final var results = m.getSchemas();
-                __ResultSetMetaDataColumnTestUtils.log(results);
-            } catch (final SQLFeatureNotSupportedException sqlfnse) {
-                log.debug("getSchemas(), unsupported by the driver; {}", sqlfnse.getMessage());
-            }
-            return null;
+        acceptContext(context -> {
+            final var schemas = context.getSchemas(null, null);
+            schemas.forEach(s -> log.info("schema: {}.{}", s.getTableCatalog(), s.getTableSchem()));
         });
     }
 
-    @Test
-    void getSchemas_catalog_schemaPattern() throws Throwable {
-        applyMetadata(m -> {
-            final var catalogs = m.getCatalogs();
-            while (catalogs.next()) {
-                final var tableCat = catalogs.getString("TABLE_CAT");
-                log.debug("tableCat: {}", tableCat);
-                final var effectiveTableCat = Optional.ofNullable(tableCat).map(String::strip).orElse("");
-                log.debug("effectiveTableCat: {}", effectiveTableCat);
-                try {
-                    final var schemas = m.getSchemas(effectiveTableCat, "%");
-                    __ResultSetMetaDataColumnTestUtils.log(schemas);
-                } catch (final SQLFeatureNotSupportedException sqlfnse) {
-                    log.debug("getSchemas(...), unsupported by the driver; {}", sqlfnse.getMessage());
-                }
-            }
-            return null;
-        });
-    }
-
-    // --------------------------------------------------------------------------------------------------- getTableTypes
-    @Test
-    void getTableTypes__() throws Throwable {
-        applyMetadata(m -> {
-            try {
-                final var results = m.getTableTypes();
-                __ResultSetMetaDataColumnTestUtils.log(results);
-            } catch (final SQLFeatureNotSupportedException sqlfnse) {
-                log.debug("getTableTypes(), unsupported by the driver; {}", sqlfnse.getMessage());
-            }
-            return null;
-        });
-    }
-
-    // ------------------------------------------------------------------------------------------------------- getTables
+    // ------------------------------------------------------------------------------------------------------- tables
     @Test
     void getTables__() throws Throwable {
-        bind(m -> {
-            final var tables = m.getTables(null, null, null, null);
-            return tables;
+        acceptContext(context -> {
+            final var tables = context.getTables(null, null, "%", null);
+            tables.forEach(t -> log.info("table: {} ({})", t.getTableName(), t.getTableType()));
         });
     }
 
-    // ------------------------------------------------------------------------------------------------------ getColumns
     @Test
     void getColumns__() throws Throwable {
-        applyMetadata(m -> {
-            try {
-                final var results = m.getColumns(null, null, null, null);
-                __ResultSetMetaDataColumnTestUtils.log(results);
-            } catch (final SQLFeatureNotSupportedException sqlfnse) {
-                log.debug("getColumns(), unsupported by the driver; {}", sqlfnse.getMessage());
+        acceptContext(context -> {
+            final var parent = findTable(context, "demo_parent");
+            if (parent == null) {
+                return;
             }
-            return null;
+            final var columns = context.getColumns(
+                    parent.getTableCat(), parent.getTableSchem(), parent.getTableName(), "%");
+            columns.forEach(c -> log.info(
+                    "column: {} {} nullable={} ordinal={}",
+                    c.getColumnName(), c.getTypeName(), c.getNullable(), c.getOrdinalPosition()));
         });
     }
 
-    @Disabled
-    @Test
-    void getColumnPrivileges__() throws Throwable {
-        applyMetadata(m -> {
-            try {
-                final var results = m.getColumnPrivileges(null, null, null, null);
-                __ResultSetMetaDataColumnTestUtils.log(results);
-            } catch (final SQLFeatureNotSupportedException sqlfnse) {
-                log.debug("unsupported by the driver; {}", sqlfnse.getMessage());
-            }
-            return null;
-        });
-    }
-
-    @Test
-    void getTablePrivileges__() throws Throwable {
-        applyMetadata(m -> {
-            try {
-                final var results = m.getTablePrivileges(null, null, "%");
-                __ResultSetMetaDataColumnTestUtils.log(results);
-            } catch (final SQLFeatureNotSupportedException sqlfnse) {
-                log.debug("getTablePrivileges(), unsupported by the driver; {}", sqlfnse.getMessage());
-            }
-            return null;
-        });
-    }
-
-    @Test
-    void getPseudoColumns__() throws Throwable {
-        applyMetadata(m -> {
-            try {
-                final var results = m.getPseudoColumns(null, null, null, null);
-                __ResultSetMetaDataColumnTestUtils.log(results);
-            } catch (final SQLFeatureNotSupportedException sqlfnse) {
-                log.error("unsupported by the driver; {}", sqlfnse.getMessage());
-            }
-            return null;
-        });
-    }
-
-    // --------------------------------------------------------------------------------------------- row identifier/keys
-    @Disabled
-    @Test
-    void getBestRowIdentifier__() throws Throwable {
-        applyMetadata(m -> {
-            try {
-                final var results = m.getBestRowIdentifier(null, null, null, DatabaseMetaData.bestRowTemporary, true);
-                __ResultSetMetaDataColumnTestUtils.log(results);
-            } catch (final SQLFeatureNotSupportedException sqlfnse) {
-                log.debug("getBestRowIdentifier(), unsupported by the driver; {}", sqlfnse.getMessage());
-            }
-            return null;
-        });
-    }
-
-    @Disabled
-    @Test
-    void getVersionColumns__() throws Throwable {
-        applyMetadata(m -> {
-            try {
-                final var results = m.getVersionColumns(null, null, null);
-                __ResultSetMetaDataColumnTestUtils.log(results);
-            } catch (final SQLFeatureNotSupportedException sqlfnse) {
-                log.debug("getVersionColumns(), unsupported by the driver; {}", sqlfnse.getMessage());
-            }
-            return null;
-        });
-    }
-
-    @Disabled
+    // --------------------------------------------------------------------------------------------------------- keys
     @Test
     void getPrimaryKeys__() throws Throwable {
-        applyMetadata(m -> {
-            try {
-                final var results = m.getPrimaryKeys(null, null, null);
-                __ResultSetMetaDataColumnTestUtils.log(results);
-            } catch (final SQLFeatureNotSupportedException sqlfnse) {
-                log.debug("getPrimaryKeys(), unsupported by the driver; {}", sqlfnse.getMessage());
+        acceptContext(context -> {
+            final var parent = findTable(context, "demo_parent");
+            if (parent == null) {
+                return;
             }
-            return null;
+            final List<PrimaryKey> keys = context.getPrimaryKeys(
+                    parent.getTableCat(), parent.getTableSchem(), parent.getTableName());
+            // documented order is COLUMN_NAME; the wrapper Integer getKeySeq() lets us re-sort to the real key order,
+            // preserving a driver-returned null instead of collapsing it to 0.
+            keys.sort(Comparator.comparing(
+                    PrimaryKey::getKeySeq, Comparator.nullsFirst(Comparator.naturalOrder())));
+            keys.forEach(k -> log.info(
+                    "pk: {} seq={} name={}", k.getColumnName(), k.getKeySeq(), k.getPkName()));
         });
     }
 
-//    @Test
-//    void getImportedKeys__() throws Throwable {
-//        bind(md -> md.getImportedKeys(null, null, null));
-//    }
-
-//    @Test
-//    void getExportedKeys__() throws Throwable {
-//        bind(md -> md.getExportedKeys(null, null, null));
-//    }
-
-    @Disabled
     @Test
-    void getCrossReference__() throws Throwable {
-        applyMetadata(m -> {
-            try {
-                final var results = m.getCrossReference(null, null, null, null, null, null);
-                __ResultSetMetaDataColumnTestUtils.log(results);
-            } catch (final SQLFeatureNotSupportedException sqlfnse) {
-                log.debug("getCrossReference(), unsupported by the driver; {}", sqlfnse.getMessage());
+    void getImportedKeys__() throws Throwable {
+        acceptContext(context -> {
+            final var child = findTable(context, "demo_child");
+            if (child == null) {
+                return;
             }
-            return null;
+            final var keys = context.getImportedKeys(
+                    child.getTableCat(), child.getTableSchem(), child.getTableName());
+            keys.forEach(k -> log.info(
+                    "fk: {}.{} -> {}.{} seq={}",
+                    k.getFktableName(), k.getFkcolumnName(),
+                    k.getPktableName(), k.getPkcolumnName(), k.getKeySeq()));
         });
     }
 
-    @Disabled
     @Test
     void getIndexInfo__() throws Throwable {
-        applyMetadata(m -> {
-            try {
-                final var results = m.getIndexInfo(null, null, null, false, true);
-                __ResultSetMetaDataColumnTestUtils.log(results);
-            } catch (final SQLFeatureNotSupportedException sqlfnse) {
-                log.debug("getIndexInfo(), unsupported by the driver; {}", sqlfnse.getMessage());
+        acceptContext(context -> {
+            final var child = findTable(context, "demo_child");
+            if (child == null) {
+                return;
             }
-            return null;
+            final var indexes = context.getIndexInfo(
+                    child.getTableCat(), child.getTableSchem(), child.getTableName(), false, true);
+            indexes.forEach(i -> log.info(
+                    "index: {} nonUnique={} column={}",
+                    i.getIndexName(), i.getNonUnique(), i.getColumnName()));
         });
     }
 
-    // ----------------------------------------------------------------------------------------------------- getTypeInfo
+    // -------------------------------------------------------------------------------------------------------- types
     @Test
     void getTypeInfo__() throws Throwable {
-        applyMetadata(m -> {
-            try {
-                final var results = m.getTypeInfo();
-                __ResultSetMetaDataColumnTestUtils.log(results);
-            } catch (final SQLFeatureNotSupportedException sqlfnse) {
-                log.debug("getTypeInfo(), unsupported by the driver; {}", sqlfnse.getMessage());
-            }
-            return null;
+        acceptContext(context -> {
+            final var types = context.getTypeInfo();
+            types.forEach(t -> log.info("type: {} ({})", t.getTypeName(), t.getDataType()));
         });
     }
 
-    // ------------------------------------------------------------------------------------------------------ UDTs/types
-    @Test
-    void getUDTs__() throws Throwable {
-        applyMetadata(m -> {
-            try {
-                final var results = m.getUDTs(null, null, null, null);
-                __ResultSetMetaDataColumnTestUtils.log(results);
-            } catch (final SQLFeatureNotSupportedException sqlfnse) {
-                log.debug("getUDTs(), unsupported by the driver; {}", sqlfnse.getMessage());
-            }
-            return null;
-        });
-    }
-
-    @Test
-    void getSuperTypes__() throws Throwable {
-        applyMetadata(m -> {
-            try {
-                final var results = m.getSuperTypes(null, null, null);
-                __ResultSetMetaDataColumnTestUtils.log(results);
-            } catch (final SQLFeatureNotSupportedException sqlfnse) {
-                log.debug("getSuperTypes(), unsupported by the driver; {}", sqlfnse.getMessage());
-            }
-            return null;
-        });
-    }
-
-    @Test
-    void getSuperTables__() throws Throwable {
-        applyMetadata(m -> {
-            try {
-                final var results = m.getSuperTables(null, null, null);
-                __ResultSetMetaDataColumnTestUtils.log(results);
-            } catch (final SQLFeatureNotSupportedException sqlfnse) {
-                log.debug("getSuperTables(), unsupported by the driver; {}", sqlfnse.getMessage());
-            }
-            return null;
-        });
-    }
-
-    @Disabled
-    @Test
-    void getAttributes__() throws Throwable {
-        applyMetadata(m -> {
-            try {
-                final var results = m.getAttributes(null, null, null, null);
-                __ResultSetMetaDataColumnTestUtils.log(results);
-            } catch (final SQLFeatureNotSupportedException sqlfnse) {
-                log.debug("getAttributes(), unsupported by the driver; {}", sqlfnse.getMessage());
-            }
-            return null;
-        });
-    }
-
-    // -------------------------------------------------------------------------------------------- procedures/functions
-    @Test
-    void getProcedures__() throws Throwable {
-        applyMetadata(m -> {
-            try {
-                final var results = m.getProcedures(null, null, null);
-                __ResultSetMetaDataColumnTestUtils.log(results);
-            } catch (final SQLFeatureNotSupportedException sqlfnse) {
-                log.debug("getProcedures(), unsupported by the driver; {}", sqlfnse.getMessage());
-            }
-            return null;
-        });
-    }
-
-    @Test
-    void getProcedureColumns__() throws Throwable {
-        applyMetadata(m -> {
-            try {
-                final var results = m.getProcedureColumns(null, null, null, null);
-                __ResultSetMetaDataColumnTestUtils.log(results);
-            } catch (final SQLFeatureNotSupportedException sqlfnse) {
-                log.debug("getProcedureColumns(), unsupported by the driver; {}", sqlfnse.getMessage());
-            }
-            return null;
-        });
-    }
-
+    // ------------------------------------------------------------------------------------------ procedures/functions
     @Test
     void getFunctions__() throws Throwable {
-        applyMetadata(m -> {
-            try {
-                final var results = m.getFunctions(null, null, null);
-                __ResultSetMetaDataColumnTestUtils.log(results);
-            } catch (final SQLFeatureNotSupportedException sqlfnse) {
-                log.debug("getFunctions(), unsupported by the driver; {}", sqlfnse.getMessage());
-            }
-            return null;
-        });
-    }
-
-    @Test
-    void getFunctionColumns__() throws Throwable {
-        applyMetadata(m -> {
-            try {
-                final var results = m.getFunctionColumns(null, null, null, null);
-                __ResultSetMetaDataColumnTestUtils.log(results);
-            } catch (final SQLFeatureNotSupportedException sqlfnse) {
-                log.debug("getFunctionColumns(), unsupported by the driver; {}", sqlfnse.getMessage());
-            }
-            return null;
+        acceptContext(context -> {
+            final var functions = context.getFunctions(null, null, "%");
+            functions.forEach(f -> log.info("function: {}", f.getFunctionName()));
         });
     }
 
     // ----------------------------------------------------------------------------------------- getClientInfoProperties
     @Test
     void getClientInfoProperties__() throws Throwable {
-        applyMetadata(m -> {
-            try {
-                final var results = m.getClientInfoProperties();
-                __ResultSetMetaDataColumnTestUtils.log(results);
-            } catch (final SQLFeatureNotSupportedException sqlfnse) {
-                log.error(sqlfnse.getMessage(), sqlfnse);
-            }
-            return null;
+        acceptContext(context -> {
+            final var properties = context.getClientInfoProperties();
+            properties.forEach(p -> log.info("clientInfo: {} (max={})", p.getName(), p.getMaxLen()));
         });
-    }
-
-    // -----------------------------------------------------------------------------------------------------------------
-    void tables(final Collection<? extends Table> tables) throws Throwable {
-        for (final var table : tables) {
-            acceptMetadata(m -> {
-                {
-                    final var result = m.getTablePrivileges(
-                            Optional.ofNullable(table.getTableCat()).orElse(""),
-                            Optional.ofNullable(table.getTableSchem()).orElse(""),
-                            table.getTableName()
-                    );
-                    __ResultSetMetaDataColumnTestUtils.log(result);
-                }
-            });
-        }
-        log.debug("tables({})", tables);
     }
 }

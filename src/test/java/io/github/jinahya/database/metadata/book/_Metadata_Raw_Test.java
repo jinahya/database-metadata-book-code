@@ -25,7 +25,6 @@ import io.vavr.CheckedFunction1;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
@@ -104,6 +103,74 @@ abstract class _Metadata_Raw_Test {
             }
             return null;
         });
+    }
+
+    // ----------------------------------------------------------------------------------------------------- fixture
+    /**
+     * A minimal, standard-SQL fixture: a parent with a two-column primary key {@code (B_COL, A_COL)}, a child with a
+     * composite foreign key back to it, and an index on the child's foreign-key columns. The methods that require an
+     * existing table (most drivers reject a {@code null} table) query this fixture.
+     */
+    private static final java.util.List<String> FIXTURE_DDL = java.util.List.of(
+            """
+            create table demo_parent (
+                a_col integer not null,
+                b_col integer not null,
+                constraint pk_demo_pk primary key (b_col, a_col)
+            )""",
+            """
+            create table demo_child (
+                id integer not null primary key,
+                parent_a integer,
+                parent_b integer,
+                constraint fk_demo_child foreign key (parent_b, parent_a)
+                        references demo_parent (b_col, a_col)
+            )""",
+            "create index ix_demo_child on demo_child (parent_b, parent_a)");
+
+    /**
+     * The coordinates of a table as the driver actually stores them; identifier case-folding differs per engine, so we
+     * discover the stored name rather than assume it.
+     *
+     * @param cat   the {@code TABLE_CAT}.
+     * @param schem the {@code TABLE_SCHEM}.
+     * @param name  the {@code TABLE_NAME}.
+     */
+    record TableRef(String cat, String schem, String name) {
+
+    }
+
+    private void createFixture(final DatabaseMetaData md) throws SQLException {
+        try (var statement = md.getConnection().createStatement()) {
+            for (final var ddl : FIXTURE_DDL) {
+                try {
+                    statement.execute(ddl);
+                } catch (final SQLException sqle) {
+                    log.debug("fixture DDL skipped ({}): {}", sqle.getMessage(), ddl.lines().findFirst().orElse(""));
+                }
+            }
+        }
+    }
+
+    private TableRef find(final DatabaseMetaData md, final String name) throws SQLException {
+        try (var tables = md.getTables(null, null, "%", new String[] {"TABLE"})) {
+            while (tables.next()) {
+                final var stored = tables.getString("TABLE_NAME");
+                if (stored != null && stored.equalsIgnoreCase(name)) {
+                    return new TableRef(tables.getString("TABLE_CAT"), tables.getString("TABLE_SCHEM"), stored);
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Creates the fixture and returns the stored coordinates of the given table, or {@code null} if the driver did not
+     * create/expose it.
+     */
+    private TableRef fixtureTable(final DatabaseMetaData md, final String name) throws SQLException {
+        createFixture(md);
+        return find(md, name);
     }
 
     // ------------------------------------------------------------------------------------------- (scalar) terms/values
@@ -239,17 +306,18 @@ abstract class _Metadata_Raw_Test {
         });
     }
 
-    @Disabled
     @Test
     void getColumnPrivileges__() throws Throwable {
-        applyMetadata(m -> {
-            try {
-                final var results = m.getColumnPrivileges(null, null, null, null);
+        acceptMetadata(m -> {
+            final var t = fixtureTable(m, "demo_parent");
+            if (t == null) {
+                return;
+            }
+            try (var results = m.getColumnPrivileges(t.cat(), t.schem(), t.name(), "%")) {
                 __ResultSetMetaDataColumnTestUtils.log(results);
             } catch (final SQLFeatureNotSupportedException sqlfnse) {
-                log.debug("unsupported by the driver; {}", sqlfnse.getMessage());
+                log.debug("getColumnPrivileges(...), unsupported by the driver; {}", sqlfnse.getMessage());
             }
-            return null;
         });
     }
 
@@ -280,83 +348,111 @@ abstract class _Metadata_Raw_Test {
     }
 
     // --------------------------------------------------------------------------------------------- row identifier/keys
-    @Disabled
     @Test
     void getBestRowIdentifier__() throws Throwable {
-        applyMetadata(m -> {
-            try {
-                final var results = m.getBestRowIdentifier(null, null, null, DatabaseMetaData.bestRowTemporary, true);
+        acceptMetadata(m -> {
+            final var t = fixtureTable(m, "demo_parent");
+            if (t == null) {
+                return;
+            }
+            try (var results = m.getBestRowIdentifier(
+                    t.cat(), t.schem(), t.name(), DatabaseMetaData.bestRowTemporary, true)) {
                 __ResultSetMetaDataColumnTestUtils.log(results);
             } catch (final SQLFeatureNotSupportedException sqlfnse) {
-                log.debug("getBestRowIdentifier(), unsupported by the driver; {}", sqlfnse.getMessage());
+                log.debug("getBestRowIdentifier(...), unsupported by the driver; {}", sqlfnse.getMessage());
             }
-            return null;
         });
     }
 
-    @Disabled
     @Test
     void getVersionColumns__() throws Throwable {
-        applyMetadata(m -> {
-            try {
-                final var results = m.getVersionColumns(null, null, null);
+        acceptMetadata(m -> {
+            final var t = fixtureTable(m, "demo_parent");
+            if (t == null) {
+                return;
+            }
+            try (var results = m.getVersionColumns(t.cat(), t.schem(), t.name())) {
                 __ResultSetMetaDataColumnTestUtils.log(results);
             } catch (final SQLFeatureNotSupportedException sqlfnse) {
-                log.debug("getVersionColumns(), unsupported by the driver; {}", sqlfnse.getMessage());
+                log.debug("getVersionColumns(...), unsupported by the driver; {}", sqlfnse.getMessage());
             }
-            return null;
         });
     }
 
-    @Disabled
     @Test
     void getPrimaryKeys__() throws Throwable {
-        applyMetadata(m -> {
-            try {
-                final var results = m.getPrimaryKeys(null, null, null);
+        acceptMetadata(m -> {
+            final var t = fixtureTable(m, "demo_parent");
+            if (t == null) {
+                return;
+            }
+            try (var results = m.getPrimaryKeys(t.cat(), t.schem(), t.name())) {
                 __ResultSetMetaDataColumnTestUtils.log(results);
             } catch (final SQLFeatureNotSupportedException sqlfnse) {
-                log.debug("getPrimaryKeys(), unsupported by the driver; {}", sqlfnse.getMessage());
+                log.debug("getPrimaryKeys(...), unsupported by the driver; {}", sqlfnse.getMessage());
             }
-            return null;
         });
     }
 
-//    @Test
-//    void getImportedKeys__() throws Throwable {
-//        bind(md -> md.getImportedKeys(null, null, null));
-//    }
+    @Test
+    void getImportedKeys__() throws Throwable {
+        acceptMetadata(m -> {
+            final var t = fixtureTable(m, "demo_child"); // the child imports the parent's key
+            if (t == null) {
+                return;
+            }
+            try (var results = m.getImportedKeys(t.cat(), t.schem(), t.name())) {
+                __ResultSetMetaDataColumnTestUtils.log(results);
+            } catch (final SQLFeatureNotSupportedException sqlfnse) {
+                log.debug("getImportedKeys(...), unsupported by the driver; {}", sqlfnse.getMessage());
+            }
+        });
+    }
 
-//    @Test
-//    void getExportedKeys__() throws Throwable {
-//        bind(md -> md.getExportedKeys(null, null, null));
-//    }
+    @Test
+    void getExportedKeys__() throws Throwable {
+        acceptMetadata(m -> {
+            final var t = fixtureTable(m, "demo_parent"); // the parent exports its key to the child
+            if (t == null) {
+                return;
+            }
+            try (var results = m.getExportedKeys(t.cat(), t.schem(), t.name())) {
+                __ResultSetMetaDataColumnTestUtils.log(results);
+            } catch (final SQLFeatureNotSupportedException sqlfnse) {
+                log.debug("getExportedKeys(...), unsupported by the driver; {}", sqlfnse.getMessage());
+            }
+        });
+    }
 
-    @Disabled
     @Test
     void getCrossReference__() throws Throwable {
-        applyMetadata(m -> {
-            try {
-                final var results = m.getCrossReference(null, null, null, null, null, null);
+        acceptMetadata(m -> {
+            final var p = fixtureTable(m, "demo_parent");
+            final var c = find(m, "demo_child"); // fixture already created by the call above
+            if (p == null || c == null) {
+                return;
+            }
+            try (var results = m.getCrossReference(
+                    p.cat(), p.schem(), p.name(), c.cat(), c.schem(), c.name())) {
                 __ResultSetMetaDataColumnTestUtils.log(results);
             } catch (final SQLFeatureNotSupportedException sqlfnse) {
-                log.debug("getCrossReference(), unsupported by the driver; {}", sqlfnse.getMessage());
+                log.debug("getCrossReference(...), unsupported by the driver; {}", sqlfnse.getMessage());
             }
-            return null;
         });
     }
 
-    @Disabled
     @Test
     void getIndexInfo__() throws Throwable {
-        applyMetadata(m -> {
-            try {
-                final var results = m.getIndexInfo(null, null, null, false, true);
+        acceptMetadata(m -> {
+            final var t = fixtureTable(m, "demo_child"); // the child carries the index
+            if (t == null) {
+                return;
+            }
+            try (var results = m.getIndexInfo(t.cat(), t.schem(), t.name(), false, true)) {
                 __ResultSetMetaDataColumnTestUtils.log(results);
             } catch (final SQLFeatureNotSupportedException sqlfnse) {
-                log.debug("getIndexInfo(), unsupported by the driver; {}", sqlfnse.getMessage());
+                log.debug("getIndexInfo(...), unsupported by the driver; {}", sqlfnse.getMessage());
             }
-            return null;
         });
     }
 
@@ -414,7 +510,6 @@ abstract class _Metadata_Raw_Test {
         });
     }
 
-    @Disabled
     @Test
     void getAttributes__() throws Throwable {
         applyMetadata(m -> {
