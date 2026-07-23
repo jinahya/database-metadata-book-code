@@ -21,10 +21,10 @@ package io.github.jinahya.database.metadata.book;
  */
 
 import lombok.extern.slf4j.Slf4j;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.junit.jupiter.api.Disabled;
+import org.testcontainers.containers.Db2Container;
 import org.testcontainers.images.PullPolicy;
 import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
 import java.sql.Connection;
@@ -32,16 +32,19 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.time.Duration;
 
-// https://java.testcontainers.org/modules/databases/postgres/
-@Testcontainers
+// https://java.testcontainers.org/modules/databases/db2/
+@Disabled("doesn't start; no arm")
+//@Testcontainers
 @Slf4j
-class TestContainers_PostgreSQL_IT
-        extends TestContainers_$_IT {
+class TestContainers_Raw_Db2_IT
+        extends TestContainers_Raw__IT {
+
+    private static final String FULL_IMAGE_NAME = "ibmcom/db2:latest";
 
     @Container
-    private static final PostgreSQLContainer<?> CONTAINER =
-            new PostgreSQLContainer<>(DockerImageName.parse("postgres:latest"))
-                    .withImagePullPolicy(PullPolicy.ageBased(Duration.ofDays(180L)));
+    private static final Db2Container CONTAINER = new Db2Container(DockerImageName.parse(FULL_IMAGE_NAME))
+            .withImagePullPolicy(PullPolicy.ageBased(Duration.ofDays(180L)))
+            .acceptLicense();
 
     // -----------------------------------------------------------------------------------------------------------------
     @Override

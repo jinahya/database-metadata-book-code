@@ -37,7 +37,7 @@ import static java.util.Objects.requireNonNull;
  * @author Jin Kwon &lt;onacit at gmail.com&gt;
  */
 @Slf4j
-abstract class Memory_$_Test
+abstract class Memory_Raw__Test
         extends _Metadata_Raw_Test {
 
     /**

@@ -26,28 +26,31 @@ import java.sql.Connection;
 import java.sql.SQLException;
 
 /**
- * A class for testing against H2.
+ * Tests for HyperSQL.
  *
- * @author Jin Kwon &lt;jinahya_at_gmail.com&gt;
+ * @author Jin Kwon &lt;onacit_at_gmail.com&gt;
+ * @see <a href="hsqldb.org>HyperSQL</a>
  */
 @Slf4j
-class Memory_H2_Test
-        extends Memory_$_Test {
+class Memory_Raw_Hsql_Test
+        extends Memory_Raw__Test {
 
-    private static final String DRIVER_NAME = "org.h2.Driver";
+    private static final String DRIVER_NAME = "org.hsqldb.jdbc.JDBCDriver";
 
     private static final Class<?> DRIVER_CLASS;
 
     static {
         try {
             DRIVER_CLASS = Class.forName(DRIVER_NAME);
-        } catch (ClassNotFoundException cnfe) {
-            throw new InstantiationError(cnfe.getMessage());
+        } catch (final ClassNotFoundException cnfe) {
+            throw new ExceptionInInitializerError(cnfe.getMessage());
         }
     }
 
-    private static final String CONNECTION_URL = "jdbc:h2:mem:test"; //;DB_CLOSE_DELAY=-1";
+    // -----------------------------------------------------------------------------------------------------------------
+    private static final String CONNECTION_URL = "jdbc:hsqldb:mem:test";
 
+    // -----------------------------------------------------------------------------------------------------------------
     @Override
     protected Connection connect() throws SQLException {
         return __JavaSqlTestUtils.connection(CONNECTION_URL);
