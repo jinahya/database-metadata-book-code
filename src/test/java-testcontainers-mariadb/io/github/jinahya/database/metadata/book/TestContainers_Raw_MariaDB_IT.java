@@ -21,8 +21,8 @@ package io.github.jinahya.database.metadata.book;
  */
 
 import lombok.extern.slf4j.Slf4j;
-import org.junit.jupiter.api.Disabled;
-import org.testcontainers.containers.MSSQLServerContainer;
+import org.testcontainers.containers.JdbcDatabaseContainer;
+import org.testcontainers.containers.MariaDBContainer;
 import org.testcontainers.images.PullPolicy;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.utility.DockerImageName;
@@ -32,25 +32,19 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.time.Duration;
 
-// https://java.testcontainers.org/modules/databases/mssqlserver/
-// https://github.com/microsoft/mssql-docker/issues/668
-// https://github.com/microsoft/mssql-jdbc/issues/2320
-// https://github.com/microsoft/mssql-jdbc/issues/849
-@Disabled
+// https://java.testcontainers.org/modules/databases/mariadb/
 @Slf4j
-class TestContainers_SQLServer_IT
-        extends TestContainers_$_IT {
+class TestContainers_Raw_MariaDB_IT
+        extends TestContainers_Raw__IT {
 
-    private static final String FULL_IMAGE_NAME = "mcr.microsoft.com/mssql/server:2022-latest";
+    private static final String FULL_IMAGE_NAME = "mariadb:latest";
 
     @Container
-    private static final MSSQLServerContainer<?> CONTAINER =
-            new MSSQLServerContainer<>(DockerImageName.parse(FULL_IMAGE_NAME))
-                    .withImagePullPolicy(PullPolicy.ageBased(Duration.ofDays(180L)))
-                    .acceptLicense();
+    private static final JdbcDatabaseContainer<?> CONTAINER =
+            new MariaDBContainer<>(DockerImageName.parse(FULL_IMAGE_NAME))
+                    .withImagePullPolicy(PullPolicy.ageBased(Duration.ofDays(180L)));
 
     // -----------------------------------------------------------------------------------------------------------------
-
     @Override
     Connection connect() throws SQLException {
         final var jdbcUrl = CONTAINER.getJdbcUrl();

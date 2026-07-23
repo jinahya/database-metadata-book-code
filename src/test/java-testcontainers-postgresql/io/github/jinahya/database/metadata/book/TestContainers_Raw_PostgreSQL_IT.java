@@ -21,29 +21,27 @@ package io.github.jinahya.database.metadata.book;
  */
 
 import lombok.extern.slf4j.Slf4j;
-import org.testcontainers.containers.JdbcDatabaseContainer;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.images.PullPolicy;
 import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.time.Duration;
 
-//https://java.testcontainers.org/modules/databases/oraclefree/
-//@Disabled("takes too long!")
+// https://java.testcontainers.org/modules/databases/postgres/
+@Testcontainers
 @Slf4j
-class TestContainers_OracleFree_IT
-        extends TestContainers_$_IT {
-
-    private static final String IMAGE_NAME = "container-registry.oracle.com/database/free:latest-lite";
+class TestContainers_Raw_PostgreSQL_IT
+        extends TestContainers_Raw__IT {
 
     @Container
-//    private static final OracleContainer CONTAINER = new OracleContainer("gvenzl/oracle-free:slim-faststart")
-//    private static final OracleContainer CONTAINER = new OracleContainer(IMAGE_NAME)
-    private static final JdbcDatabaseContainer<?> CONTAINER =
-            new org.testcontainers.oracle.OracleContainer("gvenzl/oracle-free:slim-faststart")
-                    .withDatabaseName("testDB")
-                    .withUsername("testUser")
-                    .withPassword("testPassword");
+    private static final PostgreSQLContainer<?> CONTAINER =
+            new PostgreSQLContainer<>(DockerImageName.parse("postgres:latest"))
+                    .withImagePullPolicy(PullPolicy.ageBased(Duration.ofDays(180L)));
 
     // -----------------------------------------------------------------------------------------------------------------
     @Override

@@ -22,27 +22,28 @@ package io.github.jinahya.database.metadata.book;
 
 import lombok.extern.slf4j.Slf4j;
 import org.testcontainers.containers.JdbcDatabaseContainer;
-import org.testcontainers.containers.MariaDBContainer;
-import org.testcontainers.images.PullPolicy;
 import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.utility.DockerImageName;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
-import java.time.Duration;
 
-// https://java.testcontainers.org/modules/databases/mariadb/
+//https://java.testcontainers.org/modules/databases/oraclefree/
+//@Disabled("takes too long!")
 @Slf4j
-class TestContainers_MariaDB_IT
-        extends TestContainers_$_IT {
+class TestContainers_Raw_OracleFree_IT
+        extends TestContainers_Raw__IT {
 
-    private static final String FULL_IMAGE_NAME = "mariadb:latest";
+    private static final String IMAGE_NAME = "container-registry.oracle.com/database/free:latest-lite";
 
     @Container
+//    private static final OracleContainer CONTAINER = new OracleContainer("gvenzl/oracle-free:slim-faststart")
+//    private static final OracleContainer CONTAINER = new OracleContainer(IMAGE_NAME)
     private static final JdbcDatabaseContainer<?> CONTAINER =
-            new MariaDBContainer<>(DockerImageName.parse(FULL_IMAGE_NAME))
-                    .withImagePullPolicy(PullPolicy.ageBased(Duration.ofDays(180L)));
+            new org.testcontainers.oracle.OracleContainer("gvenzl/oracle-free:slim-faststart")
+                    .withDatabaseName("testDB")
+                    .withUsername("testUser")
+                    .withPassword("testPassword");
 
     // -----------------------------------------------------------------------------------------------------------------
     @Override

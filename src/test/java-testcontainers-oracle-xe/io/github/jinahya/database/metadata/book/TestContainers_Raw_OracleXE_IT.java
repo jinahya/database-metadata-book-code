@@ -21,8 +21,8 @@ package io.github.jinahya.database.metadata.book;
  */
 
 import lombok.extern.slf4j.Slf4j;
-import org.testcontainers.containers.JdbcDatabaseContainer;
-import org.testcontainers.containers.MySQLContainer;
+import org.junit.jupiter.api.Disabled;
+import org.testcontainers.containers.OracleContainer;
 import org.testcontainers.images.PullPolicy;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.utility.DockerImageName;
@@ -32,19 +32,22 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.time.Duration;
 
-// https://java.testcontainers.org/modules/databases/mysql/
-//@Testcontainers
+// https://java.testcontainers.org/modules/databases/oraclexe/
+//@Disabled("does not start; no-arm")
+@Disabled("takes too long!")
 @Slf4j
-class TestContainers_MySQL_IT
-        extends TestContainers_$_IT {
+class TestContainers_Raw_OracleXE_IT
+        extends TestContainers_Raw__IT {
 
-    //    private static final String FULL_IMAGE_NAME = "mysql:latest";
-    private static final String FULL_IMAGE_NAME = "mysql:8";
+    private static final String IMAGE_NAME = "gvenzl/oracle-xe:latest-faststart";
 
     @Container
-    private static final JdbcDatabaseContainer<?> CONTAINER =
-            new MySQLContainer<>(DockerImageName.parse(FULL_IMAGE_NAME))
-                    .withImagePullPolicy(PullPolicy.ageBased(Duration.ofDays(180L)));
+    private static final OracleContainer CONTAINER = new OracleContainer(DockerImageName.parse(IMAGE_NAME))
+            .withImagePullPolicy(PullPolicy.ageBased(Duration.ofDays(180L)))
+//            .withStartupTimeout(Duration.ofMinutes(8L))
+            .withDatabaseName("testDB")
+            .withUsername("testUser")
+            .withPassword("testPassword");
 
     // -----------------------------------------------------------------------------------------------------------------
     @Override

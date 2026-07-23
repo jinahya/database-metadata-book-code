@@ -22,7 +22,7 @@ package io.github.jinahya.database.metadata.book;
 
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Disabled;
-import org.testcontainers.containers.OracleContainer;
+import org.testcontainers.containers.MSSQLServerContainer;
 import org.testcontainers.images.PullPolicy;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.utility.DockerImageName;
@@ -32,24 +32,25 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.time.Duration;
 
-// https://java.testcontainers.org/modules/databases/oraclexe/
-//@Disabled("does not start; no-arm")
-@Disabled("takes too long!")
+// https://java.testcontainers.org/modules/databases/mssqlserver/
+// https://github.com/microsoft/mssql-docker/issues/668
+// https://github.com/microsoft/mssql-jdbc/issues/2320
+// https://github.com/microsoft/mssql-jdbc/issues/849
+@Disabled
 @Slf4j
-class TestContainers_OracleXE_IT
-        extends TestContainers_$_IT {
+class TestContainers_Raw_SQLServer_IT
+        extends TestContainers_Raw__IT {
 
-    private static final String IMAGE_NAME = "gvenzl/oracle-xe:latest-faststart";
+    private static final String FULL_IMAGE_NAME = "mcr.microsoft.com/mssql/server:2022-latest";
 
     @Container
-    private static final OracleContainer CONTAINER = new OracleContainer(DockerImageName.parse(IMAGE_NAME))
-            .withImagePullPolicy(PullPolicy.ageBased(Duration.ofDays(180L)))
-//            .withStartupTimeout(Duration.ofMinutes(8L))
-            .withDatabaseName("testDB")
-            .withUsername("testUser")
-            .withPassword("testPassword");
+    private static final MSSQLServerContainer<?> CONTAINER =
+            new MSSQLServerContainer<>(DockerImageName.parse(FULL_IMAGE_NAME))
+                    .withImagePullPolicy(PullPolicy.ageBased(Duration.ofDays(180L)))
+                    .acceptLicense();
 
     // -----------------------------------------------------------------------------------------------------------------
+
     @Override
     Connection connect() throws SQLException {
         final var jdbcUrl = CONTAINER.getJdbcUrl();

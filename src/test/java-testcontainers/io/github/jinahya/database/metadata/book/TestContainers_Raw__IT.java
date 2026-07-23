@@ -36,7 +36,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 @Testcontainers
 @Slf4j
-abstract class TestContainers_$_IT
+abstract class TestContainers_Raw__IT
         extends _Metadata_Raw_Test {
 
     @BeforeAll
