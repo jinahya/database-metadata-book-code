@@ -38,7 +38,7 @@ import static java.util.Objects.requireNonNull;
  */
 @Slf4j
 abstract class Memory_$_Test
-        extends _Metadata_Test {
+        extends _Metadata_Raw_Test {
 
     /**
      * Returns a connection

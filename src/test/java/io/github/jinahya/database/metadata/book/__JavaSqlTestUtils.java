@@ -62,15 +62,11 @@ final class __JavaSqlTestUtils {
 
     // -----------------------------------------------------------------------------------------------------------------
     static Connection connection(final String url) throws SQLException {
-        final var connection = DriverManager.getConnection(url);
-        log.debug("connected: {}", connection);
-        return connection;
+        return DriverManager.getConnection(url);
     }
 
     static Connection connection(final String url, final String user, final String password) throws SQLException {
-        final var connection = DriverManager.getConnection(url, user, password);
-        log.debug("connected: {}", connection);
-        return connection;
+        return DriverManager.getConnection(url, user, password);
     }
 
     static <R> R applyConnection(final CheckedFunction0<? extends Connection> supplier,

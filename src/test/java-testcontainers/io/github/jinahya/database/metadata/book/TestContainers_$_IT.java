@@ -37,7 +37,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 @Testcontainers
 @Slf4j
 abstract class TestContainers_$_IT
-        extends _Metadata_Test {
+        extends _Metadata_Raw_Test {
 
     @BeforeAll
     static void checkDocker() throws IOException, InterruptedException {

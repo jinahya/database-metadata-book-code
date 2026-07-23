@@ -46,7 +46,7 @@ import static java.util.Objects.requireNonNull;
  */
 @NoArgsConstructor(access = AccessLevel.PACKAGE)
 @Slf4j
-abstract class _Metadata_Test {
+abstract class _Metadata_Binding_Test {
 
     /**
      * Returns a connection
